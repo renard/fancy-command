@@ -196,8 +196,9 @@ If DEBUG is non NIL a small message indicating the start and the finish of
 the command will be displayed.
 
 If IGNORE-JOIN is non NIL, both command standard and error outputs will be
-mix in a single stream sorted by their arrival time on the stream during the
-read operation.
+mixed in a single stream sorted by their arrival time on the stream during
+the read operation. Please note if both streams are written to rapidly the
+result might be unpredictable.
 
 When REMOVE-TIMESTAMP is NIL the nanosecond timestamp of when the lines are
 read on the streams is keep for each line. Thus each line is in the form of:
