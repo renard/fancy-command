@@ -105,6 +105,12 @@ Note: A new line (~%) is added to the LINE.
   (print-line stream line :error :colored colored :full-color full-color))
 
 
+(defun %get-nsec ()
+  "Return time in nano second."
+  (multiple-value-bind (sec nsec)
+      (isys:clock-gettime isys:clock-realtime)
+    (+ (* 1000000000 sec) nsec)))
+
 ;; Todo get file descriptor from output
 (defun read-stream (stream output fd color)
   "Read STREAM until EOF and display each line to OUTPUT stream if it is not
@@ -120,11 +126,13 @@ Returns the stream output as a list of one line per item."
   (let* ((isatty (/= 0 (isys:fd-tty-p fd)))
 	 (color-reset (getf *ansi-colors* :ansi-off))
 	 (acolor (getf *ansi-colors* color color-reset))
+	 (clock-res (multiple-value-bind (a b)
+			(isys:clock-getres isys:clock-realtime) (- a b)))
 	 ret)
     (loop for line = (read-line stream nil 'eof)
 	  until (eq line 'eof)
 	  do (progn
-	       (push line ret)
+	       (push (list (%get-nsec) line) ret)
 	       (let ((txt
 		       (if (and isatty acolor color-reset)
 			   (format nil "~a~a~a~%"
@@ -170,7 +178,9 @@ is replaced with replacement."
 	      (output *standard-output*)
 	      (output-color :green)
 	      (error *error-output*)
-	      (error-color :red))
+	      (error-color :red)
+	      (ignore-join nil)
+	      (remove-timestamp t))
 "Run PROG-AND-ARGS given as a list of '(executable arguments) using
 `iolib/os:create-process`.
 
@@ -185,16 +195,27 @@ stream is `n#\l no display would be done on it.
 If DEBUG is non NIL a small message indicating the start and the finish of
 the command will be displayed.
 
+If IGNORE-JOIN is non NIL, both command standard and error outputs will be
+mix in a single stream sorted by their arrival time on the stream during the
+read operation.
+
+When REMOVE-TIMESTAMP is NIL the nanosecond timestamp of when the lines are
+read on the streams is keep for each line. Thus each line is in the form of:
+
+   (timestamp line)
+
 The return value is a PLIST with following indicators:
 
 - `:rc`: the command return (exit) code as integer.
 - `:out`: the command standard output as a list (one line per item).
 - `:err`: the command error output as a list (one line per item).
+- `:all`: the command sorted output and error channel mix (one line per
+  item).
 "
 
   (let* ((cmd-str (shell-quote prog-and-args))
 	 (proc (apply #'iolib/os:create-process (cons prog-and-args cp-keys)))
-	 (return '(:out nil :err nil))
+	 (return '(:out nil :err nil :all nil))
 	 threads)
 
     (when debug
@@ -229,6 +250,18 @@ The return value is a PLIST with following indicators:
 				  (string= "out" (thread-name thread))
 				  :out :err))
 		   (bordeaux-threads:join-thread thread)))
+    (unless ignore-join
+      (setf (getf return :all)
+	    (sort (append
+		   (copy-tree (getf return :out))
+		   (copy-tree (getf return :err)))
+		  #'(lambda (a b) (< (car a) (car b))))))
+
+    (when remove-timestamp
+      (loop for id in '(:out :err :all)
+	    do (setf (getf return id)
+		     (loop for i in (getf return id)
+			   collect (cadr i)))))
 
     (when debug
       (if (= 0 (getf return :rc))
