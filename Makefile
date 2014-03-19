@@ -52,7 +52,6 @@ $(APP): manifest buildapp
                          --manifest-file ./build/manifest.ql     \
                          --asdf-tree $(QLDIR)/dists           \
                          --asdf-path .                           \
-			 --asdf-tree `pwd` \
 			 --load-system $(APP_NAME)          \
                          --load-system $(APP_NAME)/test          \
                          --entry $(APP_NAME)/test:main           \
@@ -65,7 +64,7 @@ app: $(APP) ;
 
 
 clean:
-	rm -fr $(ASDF_CONF) $(BUILDDIR)
+	rm -fr $(BUILDDIR)
 
 test:
 	$(APP) test/test.sh
