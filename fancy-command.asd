@@ -8,5 +8,12 @@
   :license "WTFPL"
   :depends-on (#:bordeaux-threads #:iolib #:iolib/os)
   :components ((:file "package")
-               (:file "fancy-command")))
+               (:file "fancy-command" :depends-on ("package"))))
+
+
+(asdf:defsystem #:fancy-command/test
+  :depends-on (:fancy-command)
+  :pathname "test"
+  :components ((:file "package")
+	       (:file "main" :depends-on ("package"))))
 
