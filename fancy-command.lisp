@@ -214,6 +214,10 @@ The return value is a PLIST with following indicators:
   item).
 "
 
+  (cond
+    ((not prog-and-args) (return-from run nil))
+    ((not (probe-file (car prog-and-args))) (return-from run nil)))
+  
   (let* ((cmd-str (shell-quote prog-and-args))
 	 (proc (apply #'iolib/os:create-process (cons prog-and-args cp-keys)))
 	 (return '(:out nil :err nil :all nil))
