@@ -20,7 +20,7 @@ $(QLDIR)/setup.lisp:
              --eval '(quit)'
 
 quicklisp: $(QLDIR)/setup.lisp ;
-	echo `pwd`/$(APP_NAME).asd > $(QLDIR)/local-projects/system-index.txt
+	ln -nfs `pwd` $(QLDIR)/local-projects/$(APP_NAME)
 
 $(LIBS): quicklisp
 	mkdir -p $(BUILDDIR)
