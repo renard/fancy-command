@@ -6,6 +6,7 @@
   on the screen"
   :author "Sébastien Gross <seb•ɑƬ•chezwam•ɖɵʈ•org>"
   :license "WTFPL"
+  :pathname "src"
   :depends-on (#:bordeaux-threads #:iolib #:iolib/os)
   :components ((:file "package")
                (:file "fancy-command" :depends-on ("package"))))
