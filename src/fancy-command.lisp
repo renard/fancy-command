@@ -59,6 +59,21 @@
    '(#\@ #\% #\_ #\- #\+ #\= #\: #\, #\. #\/))
   "Safe chars in a shell command")
 
+(defclass proc-return ()
+  ((rc  :initarg :rc :initform nil
+	:accessor proc-return-rc
+	:documentation "The command return (exit) code as integer" )
+   (out :initarg :out :initform nil
+	:accessor proc-return-out
+	:documentation "The command standard output as a list (one line per item)" )
+   (err :initarg :err :initform nil
+	:accessor proc-return-err
+	:documentation "The command error output as a list (one line per item)" )
+   (all :initarg :all :initform nil
+	:accessor proc-return-all
+	:documentation "The command sorted output and error channel mix (one line per
+  item)" ))
+  (:documentation "Object returned by `fc:run`."))
 
 
 (defun print-line (stream line type &key (colored t) (full-color nil))
@@ -205,14 +220,7 @@ read on the streams is keep for each line. Thus each line is in the form of:
 
    (timestamp line)
 
-The return value is a PLIST with following indicators:
-
-- `:rc`: the command return (exit) code as integer.
-- `:out`: the command standard output as a list (one line per item).
-- `:err`: the command error output as a list (one line per item).
-- `:all`: the command sorted output and error channel mix (one line per
-  item).
-"
+The return value is a `proc-return` object."
 
   (cond
     ((not prog-and-args) (return-from run nil))
@@ -221,6 +229,7 @@ The return value is a PLIST with following indicators:
   (let* ((cmd-str (shell-quote prog-and-args))
 	 (proc (apply #'iolib/os:create-process (cons prog-and-args cp-keys)))
 	 (return '(:out nil :err nil :all nil))
+	 (proc-return (make-instance 'proc-return))
 	 threads)
 
     (when debug
@@ -248,32 +257,33 @@ The return value is a PLIST with following indicators:
       :name "err")
      threads)
 
-    (setf (getf return :rc)
-	  (iolib/os:process-status proc :wait t))
+    (setf (proc-return-rc proc-return) (iolib/os:process-status proc :wait t))
+
     (loop for thread in threads
-	  do (setf (getf return (if
-				  (string= "out" (thread-name thread))
-				  :out :err))
-		   (bordeaux-threads:join-thread thread)))
+	  for lines = (bordeaux-threads:join-thread thread)
+	  do (if (string= "out" (thread-name thread))
+		 (setf (proc-return-out proc-return) lines)
+		 (setf (proc-return-err proc-return) lines)))
+    
     (unless ignore-join
-      (setf (getf return :all)
-	    (sort (append
-		   (copy-tree (getf return :out))
-		   (copy-tree (getf return :err)))
-		  #'(lambda (a b) (< (car a) (car b))))))
+      (setf (proc-return-all proc-return)
+    	    (sort (append
+    		   (copy-tree (proc-return-out proc-return))
+		   (copy-tree (proc-return-err proc-return)))
+    		  #'(lambda (a b) (< (car a) (car b))))))
 
     (when remove-timestamp
-      (loop for id in '(:out :err :all)
-	    do (setf (getf return id)
-		     (loop for i in (getf return id)
+      (loop for slot in '(all out err)
+	    do (setf (slot-value proc-return slot)
+		     (loop for i in (slot-value proc-return slot)
 			   collect (cadr i)))))
 
     (when debug
-      (if (= 0 (getf return :rc))
+      (if (= 0 (proc-return-rc proc-return))
 	  (msg-ok (format nil "Success"))
 	  (msg-error (format nil "Error"))))
 
-    return))
+    proc-return))
 
 
 ;;; "fancy-command" goes here. Hacks and glory await!

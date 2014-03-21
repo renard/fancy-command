@@ -6,6 +6,11 @@
   (:export
    #:*ansi-colors*
    #:*decorations*
+   #:proc-return
+   #:proc-return-rc
+   #:proc-return-out
+   #:proc-return-err
+   #:proc-return-all
    #:msg-info
    #:msg-debug
    #:msg-ok

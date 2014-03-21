@@ -33,9 +33,9 @@ Silently list `/tmp` directory for further processing:
 
 
     (let* ((fc (fc:run '("ls" "-al" "/tmp/") :output nil :error nil))
-           (rc (getf fc :rc))
-           (out (getf fc :out))
-           (err (getf fc :err)))
+           (rc (fc:proc-return-rc fc))
+           (out (fc:proc-return-out fc))
+           (err (fc:proc-return-err fc)))
       (if (/= 0 rc)
           (fc:msg-error (format nil "Error:~%~{~a~%~}~a" (butlast err) (car (last err))))
         (fc:msg-ok (format nil "OK:~%~{~a~%~}~a" (butlast out) (car (last out)))))
