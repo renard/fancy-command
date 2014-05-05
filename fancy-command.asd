@@ -7,7 +7,7 @@
   :author "Sébastien Gross <seb•ɑƬ•chezwam•ɖɵʈ•org>"
   :license "WTFPL"
   :pathname "src"
-  :depends-on (#:bordeaux-threads #:iolib #:iolib/os)
+  :depends-on (#:bordeaux-threads #:external-program #:local-time)
   :components ((:file "package")
                (:file "fancy-command" :depends-on ("package"))))
 

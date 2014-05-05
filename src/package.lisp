@@ -2,7 +2,7 @@
 
 (defpackage #:fancy-command
   (:nicknames :fc)
-  (:use #:cl #:bordeaux-threads #:iolib #:iolib/os)
+  (:use #:cl #:bordeaux-threads #:external-program #:local-time)
   (:export
    #:*ansi-colors*
    #:*decorations*

@@ -91,7 +91,7 @@ Note: A new line (~%) is added to the LINE.
   (let* ((decoration (getf *decorations* type))
 	 (color (getf *ansi-colors* (nth 2 decoration)))
 	 (color-reset (getf *ansi-colors* :ansi-off)))
-    (if colored
+    (if (and colored (interactive-stream-p stream))
 	(if full-color
 	    (format stream "~a~a ~a~a~%" color (nth 0 decoration) line
 		    color-reset)
@@ -120,44 +120,33 @@ Note: A new line (~%) is added to the LINE.
   (print-line stream line :error :colored colored :full-color full-color))
 
 
-(defun %get-nsec ()
-  "Return time in nano second."
-  (multiple-value-bind (sec nsec)
-      (isys:clock-gettime isys:clock-realtime)
-    (+ (* 1000000000 sec) nsec)))
 
-;; Todo get file descriptor from output
-(defun read-stream (stream output fd color)
+(defun read-stream (stream output color)
   "Read STREAM until EOF and display each line to OUTPUT stream if it is not
 `nil`.
-
-FD is the OUTPUT stream file descriptor `iolib/os:+stderr+` (2) for standard
-output and iolib/os:+stderr+ (2) for error output.
 
 COLOR is stream color used to display each lines as a key of `+ANSI-COLORS+`.
 
 Returns the stream output as a list of one line per item."
-
-  (let* ((isatty (/= 0 (isys:fd-tty-p fd)))
-	 (color-reset (getf *ansi-colors* :ansi-off))
-	 (acolor (getf *ansi-colors* color color-reset))
-	 (clock-res (multiple-value-bind (a b)
-			(isys:clock-getres isys:clock-realtime) (- a b)))
-	 ret)
-    (loop for line = (read-line stream nil 'eof)
-	  until (eq line 'eof)
-	  do (progn
-	       (push (list (%get-nsec) line) ret)
-	       (let ((txt
-		       (if (and isatty acolor color-reset)
-			   (format nil "~a~a~a~%"
-				   acolor
-				   line
-				   color-reset)
-			   (format nil "~a~%" line))))
-		 (format output txt)
-		 (force-output output))))
-    (nreverse ret)))
+  (when stream
+    (let* ((isatty (interactive-stream-p output))
+	   (color-reset (getf *ansi-colors* :ansi-off))
+	   (acolor (getf *ansi-colors* color color-reset))
+	   ret)
+      (loop for line = (read-line stream nil 'eof)
+	    until (eq line 'eof)
+	    do (progn
+		 (push (list (local-time:clock-now t) line) ret)
+		 (let ((txt
+			 (if (and isatty acolor color-reset)
+			     (format nil "~a~a~a~%"
+				     acolor
+				     line
+				     color-reset)
+			     (format nil "~a~%" line))))
+		   (format output txt)
+		   (force-output output))))
+      (nreverse ret))))
 
 ;; Shamelessly stolen from http://cl-cookbook.sourceforge.net/strings.html#manip
 (defun %replace-all (string part replacement &key (test #'char=))
@@ -225,63 +214,67 @@ The return value is a `proc-return` object."
   (cond
     ((not prog-and-args) (return-from run nil))
     ((not (probe-file (car prog-and-args))) (return-from run nil)))
-  
   (let* ((cmd-str (shell-quote prog-and-args))
-	 (proc (apply #'iolib/os:create-process (cons prog-and-args cp-keys)))
-	 (return '(:out nil :err nil :all nil))
+	 (proc (external-program:start
+		(car prog-and-args)
+		(cdr prog-and-args)
+		:output :stream
+		:error :stream))
 	 (proc-return (make-instance 'proc-return))
 	 threads)
 
     (when debug
       (msg-debug (format nil "Running \"~a\"" cmd-str)))
 
-    ;; handle output
     (push 
      (bordeaux-threads:make-thread
       #'(lambda()
-	  (read-stream
-	   (iolib/os:process-stdout proc)
-	   output
-	   iolib/os:+stdout+
-	   output-color))
+    	  (read-stream
+    	   (external-program:process-output-stream proc)
+    	   output
+    	   output-color))
       :name "out")
      threads)
     (push 
      (bordeaux-threads:make-thread
       #'(lambda()
-	  (read-stream
-	   (iolib/os:process-stderr proc)
-	   error
-	   iolib/os:+stderr+
-	   error-color))
+    	  (read-stream
+    	   (external-program:process-error-stream proc)
+    	   error
+    	   error-color))
       :name "err")
      threads)
 
-    (setf (proc-return-rc proc-return) (iolib/os:process-status proc :wait t))
+    (do ((status (external-program:process-status proc)
+    		 (external-program:process-status proc)))
+    	((not (eq status :running))))
+
+    (multiple-value-bind (status rc)
+	(external-program:process-status proc)
+      (setf (proc-return-rc proc-return) rc))
 
     (loop for thread in threads
-	  for lines = (bordeaux-threads:join-thread thread)
-	  do (if (string= "out" (thread-name thread))
-		 (setf (proc-return-out proc-return) lines)
-		 (setf (proc-return-err proc-return) lines)))
-    
+    	  for lines = (bordeaux-threads:join-thread thread)
+    	  do (if (string= "out" (thread-name thread))
+    		 (setf (proc-return-out proc-return) lines)
+    		 (setf (proc-return-err proc-return) lines)))
+
     (unless ignore-join
       (setf (proc-return-all proc-return)
     	    (sort (append
     		   (copy-tree (proc-return-out proc-return))
-		   (copy-tree (proc-return-err proc-return)))
-    		  #'(lambda (a b) (< (car a) (car b))))))
+    		   (copy-tree (proc-return-err proc-return)))
+    		  #'(lambda (a b) (local-time:timestamp< (car a) (car b))))))
 
     (when remove-timestamp
       (loop for slot in '(all out err)
-	    do (setf (slot-value proc-return slot)
-		     (loop for i in (slot-value proc-return slot)
-			   collect (cadr i)))))
-
+    	    do (setf (slot-value proc-return slot)
+    		     (loop for i in (slot-value proc-return slot)
+    			   collect (cadr i)))))
     (when debug
       (if (= 0 (proc-return-rc proc-return))
-	  (msg-ok (format nil "Success"))
-	  (msg-error (format nil "Error"))))
+    	  (msg-ok (format nil "Success"))
+    	  (msg-error (format nil "Error"))))
 
     proc-return))
 
