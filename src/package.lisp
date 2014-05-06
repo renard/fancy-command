@@ -3,6 +3,8 @@
 (defpackage #:fancy-command
   (:nicknames :fc)
   (:use #:cl #:bordeaux-threads #:external-program #:local-time)
+  ;; prevent external-program:run redefinition
+  (:shadow external-program:run)
   (:export
    #:*ansi-colors*
    #:*decorations*
